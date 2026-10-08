@@ -1,3452 +1,803 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
+ini_set('display_errors', '0');
 
 /**
  * ============================================================
- * UPI PAYMENT CHECKOUT
- * File: pay.php
+ * UPI PAYMENT CHECKOUT - HIGH COMPATIBILITY ENGINE
+ * File: pay.php / api/pay.php
  *
- * PREMIUM FINTECH CHECKOUT UI
- *
- * BACKEND:
- * - No database
- * - Receives data from index.php
- * - Base64 JSON decoding
- * - UPI payment URL
- * - QR generation
- * - Expiry countdown
- * - UPI app buttons
- *
- * IMAGE FILES:
- * /assets/images/phonepe.png
- * /assets/images/googlepay.png
- * /assets/images/paytm.png
+ * Supports Personal (P2P) & Merchant (P2M) UPI IDs
+ * Direct App Deep-Linking, Android Package Intents & QR Code
  * ============================================================
  */
 
-
-/* ============================================================
-   ERROR FUNCTION
-============================================================ */
-
-function showError($message)
-{
+function showError($message) {
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-
 <meta charset="UTF-8">
-
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
-
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0f766e">
-
-<title>Payment Link</title>
-
+<title>Payment Link - Error</title>
 <style>
-
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-}
-
-html,
+*{margin:0;padding:0;box-sizing:border-box;}
 body{
-    width:100%;
-    min-height:100%;
-}
-
-body{
-    font-family:
-        Arial,
-        Helvetica,
-        sans-serif;
-
-    background:#f3f7f6;
-    color:#17201e;
-
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:#0b1315;
+    color:#e2e8f0;
     min-height:100vh;
-
     display:flex;
     align-items:center;
     justify-content:center;
-
     padding:20px;
 }
-
 .error-card{
-
     width:100%;
     max-width:420px;
-
-    background:#ffffff;
-
-    border:1px solid #dfe9e6;
-
-    border-radius:20px;
-
-    padding:42px 25px;
-
+    background:#131f24;
+    border:1px solid #23373e;
+    border-radius:24px;
+    padding:36px 24px;
     text-align:center;
-
-    box-shadow:
-        0 20px 50px
-        rgba(15,118,110,.08);
-
-    animation:
-        errorIn .45s ease both;
+    box-shadow:0 25px 60px rgba(0,0,0,0.5);
 }
-
 .error-icon{
-
-    width:68px;
-    height:68px;
-
-    margin:0 auto 18px;
-
+    width:64px;
+    height:64px;
+    margin:0 auto 20px;
     border-radius:50%;
-
-    background:#fff1f2;
-
-    color:#dc2626;
-
-    border:1px solid #fecdd3;
-
+    background:rgba(239,68,68,0.15);
+    color:#ef4444;
+    border:1px solid rgba(239,68,68,0.3);
     display:flex;
-
     align-items:center;
     justify-content:center;
-
-    font-size:28px;
-    font-weight:900;
+    font-size:32px;
+    font-weight:700;
 }
-
 .error-title{
-
-    font-size:21px;
-
-    font-weight:850;
-
-    color:#17201e;
-
-    margin-bottom:8px;
+    font-size:20px;
+    font-weight:700;
+    color:#f8fafc;
+    margin-bottom:10px;
 }
-
 .error-text{
-
-    color:#6b7a76;
-
-    font-size:13px;
-
+    color:#94a3b8;
+    font-size:14px;
     line-height:1.6;
 }
-
-@keyframes errorIn{
-
-    from{
-        opacity:0;
-        transform:translateY(18px);
-    }
-
-    to{
-        opacity:1;
-        transform:translateY(0);
-    }
-}
-
 </style>
-
 </head>
-
 <body>
-
 <div class="error-card">
-
-    <div class="error-icon">
-        !
-    </div>
-
-    <div class="error-title">
-        Payment Link Invalid
-    </div>
-
-    <div class="error-text">
-
-        <?php
-        echo htmlspecialchars(
-            $message,
-            ENT_QUOTES,
-            'UTF-8'
-        );
-        ?>
-
-    </div>
-
+    <div class="error-icon">!</div>
+    <div class="error-title">Payment Link Invalid</div>
+    <div class="error-text"><?php echo htmlspecialchars($message, ENT_QUOTES, 'UTF-8'); ?></div>
 </div>
-
 </body>
 </html>
-
 <?php
-exit;
+    exit;
 }
 
-
-/* ============================================================
-   GET DATA
-============================================================ */
-
-$data = isset($_GET['data'])
-    ? trim($_GET['data'])
-    : '';
-
+$data = isset($_GET['data']) ? trim($_GET['data']) : '';
 if($data === ''){
-
-    showError(
-        "Invalid payment link."
-    );
-
+    showError("Invalid payment link parameters.");
 }
 
-
-/* ============================================================
-   BASE64 DECODE
-============================================================ */
-
-$decodedBase64 = base64_decode(
-    $data,
-    true
-);
-
-
-/*
- * Fallback if + was converted to space.
- */
-
+$decodedBase64 = base64_decode($data, true);
 if($decodedBase64 === false){
-
-    $decodedBase64 = base64_decode(
-        str_replace(
-            ' ',
-            '+',
-            $data
-        ),
-        true
-    );
-
+    $decodedBase64 = base64_decode(str_replace(' ', '+', $data), true);
 }
-
-
 if($decodedBase64 === false){
-
-    showError(
-        "Unable to decode payment link."
-    );
-
+    showError("Unable to decode payment link data.");
 }
 
-
-/* ============================================================
-   JSON DATA
-============================================================ */
-
-/*
- * index.php creates Base64 from UTF-8 JSON.
- *
- * Do NOT rawurldecode() decoded JSON.
- */
-
-$json = $decodedBase64;
-
-$payment = json_decode(
-    $json,
-    true
-);
-
-if(
-    !is_array($payment) ||
-    json_last_error() !== JSON_ERROR_NONE
-){
-
-    showError(
-        "Invalid payment data."
-    );
-
+$payment = json_decode($decodedBase64, true);
+if(!is_array($payment) || json_last_error() !== JSON_ERROR_NONE){
+    showError("Invalid payment payload.");
 }
 
+$company = trim((string)($payment['company'] ?? 'Payment'));
+$logo    = trim((string)($payment['logo'] ?? ''));
+$upi     = trim((string)($payment['upi'] ?? ''));
+$amount  = trim((string)($payment['amount'] ?? '0'));
+$expires = (int)($payment['expires'] ?? 0);
 
-/* ============================================================
-   PAYMENT DATA
-============================================================ */
-
-$company = trim(
-    (string)(
-        $payment['company'] ?? ''
-    )
-);
-
-$logo = trim(
-    (string)(
-        $payment['logo'] ?? ''
-    )
-);
-
-$upi = trim(
-    (string)(
-        $payment['upi'] ?? ''
-    )
-);
-
-$amount = trim(
-    (string)(
-        $payment['amount'] ?? ''
-    )
-);
-
-$expires = (int)(
-    $payment['expires'] ?? 0
-);
-
-
-/* ============================================================
-   VALIDATION
-============================================================ */
-
-if(
-    $company === '' ||
-    $upi === '' ||
-    $amount === '' ||
-    $expires <= 0
-){
-
-    showError(
-        "Payment link data is incomplete."
-    );
-
+if($company === '' || $upi === '' || $amount === '' || $expires <= 0){
+    showError("Payment link data is incomplete.");
 }
-
-
-/* ============================================================
-   AMOUNT VALIDATION
-============================================================ */
-
-if(
-    !is_numeric($amount) ||
-    (float)$amount <= 0
-){
-
-    showError(
-        "Invalid payment amount."
-    );
-
+if(!is_numeric($amount) || (float)$amount <= 0){
+    showError("Invalid payment amount specified.");
 }
-
-
-/* ============================================================
-   UPI VALIDATION
-============================================================ */
-
-if(
-    strpos(
-        $upi,
-        '@'
-    ) === false
-){
-
-    showError(
-        "Invalid UPI ID."
-    );
-
+if(strpos($upi, '@') === false){
+    showError("Invalid receiver UPI ID.");
 }
-
-
-/* ============================================================
-   EXPIRY
-============================================================ */
 
 $currentTime = time();
+$isExpired   = ($currentTime >= $expires);
 
-$isExpired = (
-    $currentTime >= $expires
-);
+$cleanCompany = preg_replace('/[^a-zA-Z0-9 ]/', '', $company);
+if(trim($cleanCompany) === '') {
+    $cleanCompany = 'Merchant';
+}
+$cleanCompany = substr($cleanCompany, 0, 25);
 
+$displayAmount = number_format((float)$amount, 2, '.', '');
 
-/* ============================================================
-   SAFE VALUES
-============================================================ */
+// Standard sanitized UPI parameters
+$upiQuery = 'pa=' . rawurlencode($upi) .
+            '&pn=' . rawurlencode($cleanCompany) .
+            '&am=' . rawurlencode($displayAmount) .
+            '&cu=INR' .
+            '&tn=' . rawurlencode("Payment to " . $cleanCompany);
 
-$safeCompany = htmlspecialchars(
-    $company,
-    ENT_QUOTES,
-    'UTF-8'
-);
+$standardUPI = 'upi://pay?' . $upiQuery;
+$qrURL = 'https://api.qrserver.com/v1/create-qr-code/?size=400x400&margin=10&data=' . rawurlencode($standardUPI);
 
-$safeUPI = htmlspecialchars(
-    $upi,
-    ENT_QUOTES,
-    'UTF-8'
-);
-
-$safeLogo = htmlspecialchars(
-    $logo,
-    ENT_QUOTES,
-    'UTF-8'
-);
-
-$displayAmount = number_format(
-    (float)$amount,
-    2,
-    '.',
-    ''
-);
-
-
-/* ============================================================
-   UPI PAYMENT URL
-============================================================ */
-
-$upiPaymentURL =
-    'upi://pay' .
-    '?pa=' .
-    rawurlencode($upi) .
-    '&pn=' .
-    rawurlencode($company) .
-    '&am=' .
-    rawurlencode($displayAmount) .
-    '&cu=INR';
-
-
-/* ============================================================
-   QR CODE URL
-============================================================ */
-
-$qrURL =
-    'https://api.qrserver.com/v1/create-qr-code/' .
-    '?size=400x400' .
-    '&margin=12' .
-    '&data=' .
-    rawurlencode(
-        $upiPaymentURL
-    );
-
-
-/* ============================================================
-   APP IMAGE PATHS
-============================================================ */
-
-$phonePeImage =
-    'assets/images/phonepe.png';
-
-$googlePayImage =
-    'assets/images/googlepay.png';
-
-$paytmImage =
-    'assets/images/paytm.png';
-
-
-$phonePeExists = file_exists(
-    __DIR__ .
-    '/assets/images/phonepe.png'
-);
-
-$googlePayExists = file_exists(
-    __DIR__ .
-    '/assets/images/googlepay.png'
-);
-
-$paytmExists = file_exists(
-    __DIR__ .
-    '/assets/images/paytm.png'
-);
-
+$safeCompany = htmlspecialchars($company, ENT_QUOTES, 'UTF-8');
+$safeUPI     = htmlspecialchars($upi, ENT_QUOTES, 'UTF-8');
+$safeLogo    = htmlspecialchars($logo, ENT_QUOTES, 'UTF-8');
 ?>
-
 <!DOCTYPE html>
-
 <html lang="en">
-
 <head>
-
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d9488">
+<meta name="color-scheme" content="light dark">
+<title><?php echo $safeCompany; ?> - Pay ₹<?php echo $displayAmount; ?></title>
 
-<meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0"
->
-
-<meta
-    name="theme-color"
-    content="#0f766e"
->
-
-<meta
-    name="color-scheme"
-    content="light"
->
-
-<title>
-    <?php echo $safeCompany; ?> - Secure Payment
-</title>
-
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
-
-/* ============================================================
-   RESET
-============================================================ */
-
-*{
-
-    margin:0;
-    padding:0;
-
-    box-sizing:border-box;
-
+:root {
+    --primary: #0d9488;
+    --primary-hover: #0f766e;
+    --primary-glow: rgba(13, 148, 136, 0.25);
+    --bg: #090f11;
+    --card-bg: #121c20;
+    --card-border: #1e2f36;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --accent-green: #10b981;
+    --accent-orange: #f59e0b;
 }
 
-html,
-body{
-
-    width:100%;
-    min-height:100%;
-
-}
-
-button,
-input{
-
-    font-family:inherit;
-
-}
-
-button{
-
-    -webkit-tap-highlight-color:transparent;
-
-}
-
-
-/* ============================================================
-   BODY
-============================================================ */
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 
 body{
-
-    font-family:
-        Arial,
-        Helvetica,
-        sans-serif;
-
-    background:#f2f7f6;
-
-    color:#17201e;
-
-    -webkit-font-smoothing:antialiased;
-
-    overflow-x:hidden;
-
+    font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    background-image: 
+        radial-gradient(at 0% 0%, rgba(13, 148, 136, 0.12) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.08) 0px, transparent 50%);
+    color: var(--text-main);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 24px 14px 40px;
 }
-
-
-/* ============================================================
-   PAGE BACKGROUND
-============================================================ */
-
-.checkout-page{
-
-    min-height:100vh;
-
-    width:100%;
-
-    display:flex;
-
-    justify-content:center;
-
-    align-items:flex-start;
-
-    padding:40px 20px 60px;
-
-    background:
-
-        radial-gradient(
-            circle at 50% 0%,
-            #ffffff 0%,
-            #f5faf9 42%,
-            #edf4f2 100%
-        );
-
-}
-
-
-/* ============================================================
-   MAIN CHECKOUT
-============================================================ */
 
 .checkout-wrapper{
-
-    width:100%;
-
-    max-width:540px;
-
-    background:#ffffff;
-
-    border:
-        1px solid
-        #dce8e5;
-
-    border-radius:22px;
-
-    overflow:hidden;
-
-    box-shadow:
-
-        0 24px 70px
-        rgba(15,118,110,.08),
-
-        0 5px 20px
-        rgba(15,23,42,.04);
-
-    animation:
-
-        checkoutEnter
-        .55s
-        cubic-bezier(.2,.7,.2,1)
-        both;
-
+    width: 100%;
+    max-width: 440px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 28px;
+    padding: 28px 22px;
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.6);
+    position: relative;
+    overflow: hidden;
 }
 
-
-@keyframes checkoutEnter{
-
-    from{
-
-        opacity:0;
-
-        transform:
-            translateY(25px)
-            scale(.985);
-
-    }
-
-    to{
-
-        opacity:1;
-
-        transform:
-            translateY(0)
-            scale(1);
-
-    }
-
+.top-bar{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 22px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
 }
 
-
-/* ============================================================
-   HEADER
-============================================================ */
-
-.checkout-header{
-
-    height:65px;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:center;
-
-    position:relative;
-
-    border-bottom:
-        1px solid
-        #e9f0ee;
-
-    background:#ffffff;
-
+.brand-info{
+    display: flex;
+    align-items: center;
+    gap: 12px;
 }
 
-
-.checkout-header:after{
-
-    content:"";
-
-    position:absolute;
-
-    left:0;
-    right:0;
-    bottom:0;
-
-    height:2px;
-
-    background:
-        linear-gradient(
-            90deg,
-            transparent,
-            #0f766e,
-            transparent
-        );
-
-    opacity:.35;
-
+.brand-logo{
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    object-fit: contain;
+    background: #ffffff;
+    padding: 4px;
+    border: 1px solid var(--card-border);
 }
 
-
-.secure-label{
-
-    display:flex;
-
-    align-items:center;
-
-    gap:8px;
-
-    color:#53645f;
-
-    font-size:11px;
-
-    font-weight:750;
-
+.brand-logo-fallback{
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, #0d9488, #10b981);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 800;
 }
 
-
-.secure-check{
-
-    width:22px;
-
-    height:22px;
-
-    border-radius:50%;
-
-    background:#e7f7f3;
-
-    color:#0f766e;
-
-    border:
-        1px solid
-        #c7e9e1;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:center;
-
-    font-size:11px;
-
-    font-weight:900;
-
+.brand-name{
+    font-size: 16px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.2;
 }
 
-
-/* ============================================================
-   MERCHANT
-============================================================ */
-
-.merchant{
-
-    text-align:center;
-
-    padding:
-        31px
-        22px
-        14px;
-
+.brand-sub{
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
 }
 
-
-.merchant-logo{
-
-    width:74px;
-
-    height:74px;
-
-    display:block;
-
-    margin:
-        0
-        auto
-        14px;
-
-    padding:8px;
-
-    object-fit:contain;
-
-    border:
-        1px solid
-        #dce8e5;
-
-    border-radius:17px;
-
-    background:#ffffff;
-
-    box-shadow:
-        0 8px 25px
-        rgba(15,118,110,.08);
-
-    animation:
-        logoEnter
-        .55s
-        ease
-        .1s
-        both;
-
+.timer-badge{
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    color: var(--accent-orange);
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: 0.5px;
 }
 
-
-@keyframes logoEnter{
-
-    from{
-
-        opacity:0;
-
-        transform:
-            scale(.78)
-            rotate(-3deg);
-
-    }
-
-    to{
-
-        opacity:1;
-
-        transform:
-            scale(1)
-            rotate(0);
-
-    }
-
+.amount-card{
+    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+    border: 1px solid var(--card-border);
+    border-radius: 22px;
+    padding: 20px;
+    text-align: center;
+    margin-bottom: 22px;
+    position: relative;
 }
-
-
-.merchant-name{
-
-    color:#17201e;
-
-    font-size:19px;
-
-    font-weight:850;
-
-    line-height:1.3;
-
-    word-break:break-word;
-
-}
-
-
-.merchant-subtitle{
-
-    margin-top:6px;
-
-    color:#7b8a86;
-
-    font-size:11px;
-
-    font-weight:500;
-
-}
-
-
-/* ============================================================
-   AMOUNT
-============================================================ */
-
-.amount-area{
-
-    text-align:center;
-
-    padding:
-        4px
-        20px
-        24px;
-
-}
-
 
 .amount-label{
-
-    color:#7c8a87;
-
-    font-size:11px;
-
-    font-weight:600;
-
-    margin-bottom:6px;
-
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    font-weight: 600;
+    margin-bottom: 6px;
 }
 
-
-.amount{
-
-    color:#0f766e;
-
-    font-size:39px;
-
-    line-height:1.08;
-
-    font-weight:900;
-
-    letter-spacing:-1.5px;
-
-    animation:
-        amountIn
-        .5s
-        ease
-        .15s
-        both;
-
+.amount-value{
+    font-size: 38px;
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
 }
 
-
-@keyframes amountIn{
-
-    from{
-
-        opacity:0;
-
-        transform:
-            translateY(8px);
-
-    }
-
-    to{
-
-        opacity:1;
-
-        transform:
-            translateY(0);
-
-    }
-
+.amount-symbol{
+    color: var(--primary);
+    font-size: 28px;
 }
 
-
-/* ============================================================
-   EXPIRY
-============================================================ */
-
-.expiry{
-
-    margin:
-        0
-        24px
-        22px;
-
-    padding:
-        14px
-        15px;
-
-    border:
-        1px solid
-        #f1dfbb;
-
-    border-radius:13px;
-
-    background:
-        linear-gradient(
-            135deg,
-            #fffaf0,
-            #fffdf8
-        );
-
-    text-align:center;
-
-    position:relative;
-
-    overflow:hidden;
-
+.section-label{
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-align: center;
 }
 
-
-.expiry:before{
-
-    content:"";
-
-    position:absolute;
-
-    left:0;
-    top:0;
-
-    width:100%;
-    height:2px;
-
-    background:#d97706;
-
-    opacity:.55;
-
+/* APP GRID */
+.app-grid{
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
 }
 
-
-.expiry-label{
-
-    color:#987033;
-
-    font-size:9px;
-
-    font-weight:850;
-
-    letter-spacing:.7px;
-
-    text-transform:uppercase;
-
-    margin-bottom:5px;
-
+.app-btn{
+    background: #17242a;
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    padding: 12px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: #ffffff;
+    text-decoration: none;
 }
 
-
-.countdown{
-
-    color:#b45309;
-
-    font-size:18px;
-
-    font-weight:900;
-
-    letter-spacing:.5px;
-
+.app-btn:hover, .app-btn:active{
+    transform: translateY(-2px);
+    background: #1c2e36;
+    border-color: var(--primary);
+    box-shadow: 0 8px 20px var(--primary-glow);
 }
 
-
-.expiry-date{
-
-    color:#a19070;
-
-    font-size:9px;
-
-    margin-top:5px;
-
+.app-icon{
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-
-/* ============================================================
-   CONTENT
-============================================================ */
-
-.payment-content{
-
-    padding:
-        0
-        24px
-        30px;
-
+.app-title{
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
 }
 
-
-/* ============================================================
-   SECTION
-============================================================ */
-
-.section{
-
-    margin-top:19px;
-
+/* MAIN PAY BUTTON */
+.pay-now-btn{
+    width: 100%;
+    background: linear-gradient(135deg, #0d9488 0%, #10b981 100%);
+    color: #ffffff;
+    border: none;
+    border-radius: 18px;
+    padding: 16px;
+    font-size: 15px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 10px 25px rgba(13, 148, 136, 0.35);
+    margin-bottom: 20px;
 }
 
-
-.section-title{
-
-    color:#26332f;
-
-    font-size:12px;
-
-    font-weight:850;
-
-    margin-bottom:9px;
-
+.pay-now-btn:active{
+    transform: scale(0.98);
 }
 
-
-/* ============================================================
-   UPI BOX
-============================================================ */
-
-.upi-box{
-
-    width:100%;
-
-    min-height:52px;
-
-    display:flex;
-
-    align-items:center;
-
-    border:
-        1px solid
-        #d7e4e0;
-
-    border-radius:11px;
-
-    overflow:hidden;
-
-    background:#fbfdfc;
-
-    transition:
-
-        border-color .2s ease,
-
-        box-shadow .2s ease;
-}
-
-
-.upi-box:hover{
-
-    border-color:#9dcfc4;
-
-    box-shadow:
-        0 7px 20px
-        rgba(15,118,110,.06);
-
-}
-
-
-.upi-value{
-
-    flex:1;
-
-    min-width:0;
-
-    padding:
-        0
-        14px;
-
-    color:#35433f;
-
-    font-size:12px;
-
-    font-weight:700;
-
-    overflow:hidden;
-
-    text-overflow:ellipsis;
-
-    white-space:nowrap;
-
-}
-
-
-.copy-button{
-
-    height:52px;
-
-    padding:
-        0
-        18px;
-
-    border:0;
-
-    border-left:
-        1px solid
-        #dfeae7;
-
-    background:#f1faf7;
-
-    color:#0f766e;
-
-    font-size:10px;
-
-    font-weight:900;
-
-    cursor:pointer;
-
-    transition:
-
-        background .2s ease,
-
-        color .2s ease;
-}
-
-
-.copy-button:hover{
-
-    background:#e5f7f2;
-
-    color:#115e59;
-
-}
-
-
-.copy-button:active{
-
-    background:#d8f0ea;
-
-}
-
-
-/* ============================================================
-   QR SECTION
-============================================================ */
-
+/* QR CONTAINER */
 .qr-section{
-
-    text-align:center;
-
-    border:
-        1px solid
-        #dce8e5;
-
-    border-radius:16px;
-
-    padding:
-        22px
-        15px
-        18px;
-
-    background:
-
-        linear-gradient(
-            180deg,
-            #ffffff 0%,
-            #fafdfe 100%
-        );
-
-    box-shadow:
-        0 7px 24px
-        rgba(15,118,110,.035);
-
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 18px;
+    text-align: center;
+    margin-bottom: 20px;
 }
 
-
-.qr-title{
-
-    color:#17201e;
-
-    font-size:15px;
-
-    font-weight:850;
-
+.qr-box{
+    width: 200px;
+    height: 200px;
+    margin: 0 auto 12px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
-
-
-.qr-subtitle{
-
-    color:#7a8985;
-
-    font-size:10px;
-
-    margin-top:5px;
-
-    margin-bottom:16px;
-
-}
-
-
-.qr-loader{
-
-    width:214px;
-
-    height:214px;
-
-    margin:0 auto;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:center;
-
-    border:
-        1px solid
-        #dfeae7;
-
-    border-radius:13px;
-
-    background:#f8fbfa;
-
-}
-
-
-.qr-spinner{
-
-    width:32px;
-
-    height:32px;
-
-    border:
-        3px solid
-        #dce9e6;
-
-    border-top-color:#0f766e;
-
-    border-radius:50%;
-
-    animation:
-        spin
-        .7s
-        linear
-        infinite;
-
-}
-
 
 .qr-image{
-
-    display:none;
-
-    width:214px;
-
-    height:214px;
-
-    margin:0 auto;
-
-    padding:7px;
-
-    object-fit:contain;
-
-    background:#ffffff;
-
-    border:
-        1px solid
-        #dce8e5;
-
-    border-radius:13px;
-
-    box-shadow:
-        0 8px 25px
-        rgba(15,118,110,.07);
-
-    animation:
-        qrAppear
-        .35s
-        ease
-        both;
-
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    border-radius: 10px;
 }
 
-
-@keyframes qrAppear{
-
-    from{
-
-        opacity:0;
-
-        transform:
-            scale(.94);
-
-    }
-
-    to{
-
-        opacity:1;
-
-        transform:
-            scale(1);
-
-    }
-
+.qr-hint{
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
 }
 
-
-.qr-download{
-
-    width:100%;
-
-    height:45px;
-
-    margin-top:13px;
-
-    border:
-        1px solid
-        #cfe0dc;
-
-    border-radius:10px;
-
-    background:#ffffff;
-
-    color:#31514a;
-
-    font-size:10px;
-
-    font-weight:850;
-
-    cursor:pointer;
-
-    transition:
-
-        background .2s ease,
-
-        border-color .2s ease,
-
-        color .2s ease,
-
-        transform .15s ease;
+/* UPI ID COPY BAR */
+.copy-bar{
+    background: #17242a;
+    border: 1px dashed var(--card-border);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
 }
 
-
-.qr-download:hover{
-
-    background:#effaf7;
-
-    border-color:#a5d2c8;
-
-    color:#0f766e;
-
+.copy-info{
+    overflow: hidden;
 }
 
-
-.qr-download:active{
-
-    transform:scale(.98);
-
+.copy-label{
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 700;
 }
 
-
-/* ============================================================
-   MAIN PAYMENT BUTTON
-============================================================ */
-
-.pay-button{
-
-    position:relative;
-
-    width:100%;
-
-    height:55px;
-
-    margin-top:18px;
-
-    border:0;
-
-    border-radius:11px;
-
-    background:#0f766e;
-
-    color:#ffffff;
-
-    font-size:14px;
-
-    font-weight:900;
-
-    cursor:pointer;
-
-    overflow:hidden;
-
-    box-shadow:
-        0 9px 24px
-        rgba(15,118,110,.20);
-
-    transition:
-
-        transform .15s ease,
-
-        background .2s ease,
-
-        box-shadow .2s ease;
-
+.copy-upi{
+    font-size: 13px;
+    font-weight: 700;
+    color: #38bdf8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 2px;
 }
 
-
-.pay-button:before{
-
-    content:"";
-
-    position:absolute;
-
-    top:0;
-    left:-110%;
-
-    width:75%;
-    height:100%;
-
-    background:
-        linear-gradient(
-            90deg,
-            transparent,
-            rgba(255,255,255,.18),
-            transparent
-        );
-
-    transform:skewX(-20deg);
-
-    transition:left .6s ease;
-
+.copy-action-btn{
+    background: rgba(56, 189, 248, 0.15);
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    color: #38bdf8;
+    padding: 6px 12px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-
-.pay-button:hover{
-
-    background:#115e59;
-
-    box-shadow:
-        0 12px 28px
-        rgba(15,118,110,.26);
-
+.copy-action-btn:active{
+    background: #38bdf8;
+    color: #000;
 }
 
-
-.pay-button:hover:before{
-
-    left:135%;
-
+/* FOOTER */
+.security-note{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
 }
 
-
-.pay-button:active{
-
-    transform:scale(.985);
-
+.security-badge{
+    color: var(--accent-green);
 }
 
-
-.pay-button.loading{
-
-    pointer-events:none;
-
-    background:#115e59;
-
+/* TOAST */
+.toast{
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #10b981;
+    color: #ffffff;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-
-.pay-text{
-
-    transition:
-        opacity .2s ease;
-
+.toast.show{
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
 }
 
-
-.pay-button.loading
-.pay-text{
-
-    opacity:0;
-
+/* EXPIRED STATE */
+.expired-card{
+    display: none;
+    text-align: center;
+    padding: 40px 10px;
 }
-
-
-.pay-spinner{
-
-    position:absolute;
-
-    width:22px;
-    height:22px;
-
-    left:50%;
-    top:50%;
-
-    margin:
-        -11px
-        0
-        0
-        -11px;
-
-    border:
-        3px solid
-        rgba(255,255,255,.30);
-
-    border-top-color:#ffffff;
-
-    border-radius:50%;
-
-    display:none;
-
-    animation:
-        spin
-        .7s
-        linear
-        infinite;
-
-}
-
-
-.pay-button.loading
-.pay-spinner{
-
-    display:block;
-
-}
-
-
-/* ============================================================
-   UPI APP HEADING
-============================================================ */
-
-.apps-heading{
-
-    text-align:center;
-
-    color:#879590;
-
-    font-size:10px;
-
-    font-weight:650;
-
-    margin:
-        23px
-        0
-        12px;
-
-    position:relative;
-
-}
-
-
-.apps-heading:before,
-.apps-heading:after{
-
-    content:"";
-
-    position:absolute;
-
-    top:50%;
-
-    width:27%;
-
-    height:1px;
-
-    background:#e4ece9;
-
-}
-
-
-.apps-heading:before{
-
-    left:0;
-
-}
-
-
-.apps-heading:after{
-
-    right:0;
-
-}
-
-
-/* ============================================================
-   UPI APPS
-============================================================ */
-
-.apps{
-
-    display:grid;
-
-    grid-template-columns:
-        repeat(3,1fr);
-
-    gap:9px;
-
-}
-
-
-.app-button{
-
-    height:68px;
-
-    border:
-        1px solid
-        #dce7e4;
-
-    border-radius:13px;
-
-    background:#ffffff;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:center;
-
-    cursor:pointer;
-
-    position:relative;
-
-    overflow:hidden;
-
-    transition:
-
-        transform .18s ease,
-
-        background .18s ease,
-
-        border-color .18s ease,
-
-        box-shadow .18s ease;
-
-}
-
-
-.app-button:hover{
-
-    background:#fbfdfc;
-
-    border-color:#b8d6cf;
-
-    box-shadow:
-        0 7px 18px
-        rgba(15,118,110,.07);
-
-    transform:translateY(-2px);
-
-}
-
-
-.app-button:active{
-
-    transform:scale(.95);
-
-}
-
-
-.app-button img{
-
-    display:block;
-
-    max-width:82px;
-
-    max-height:39px;
-
-    width:auto;
-
-    height:auto;
-
-    object-fit:contain;
-
-}
-
-
-.app-text{
-
-    color:#35433f;
-
-    font-size:10px;
-
-    font-weight:850;
-
-}
-
-
-/* ============================================================
-   PAYMENT DETAILS
-============================================================ */
-
-.details{
-
-    margin-top:24px;
-
-    border:
-        1px solid
-        #e1ebe8;
-
-    border-radius:13px;
-
-    overflow:hidden;
-
-    background:#fbfdfc;
-
-}
-
-
-.detail-row{
-
-    min-height:45px;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:space-between;
-
-    gap:15px;
-
-    padding:
-        0
-        13px;
-
-    border-bottom:
-        1px solid
-        #eaf0ee;
-
-    font-size:11px;
-
-}
-
-
-.detail-row:last-child{
-
-    border-bottom:0;
-
-}
-
-
-.detail-label{
-
-    color:#7c8a86;
-
-    font-weight:500;
-
-}
-
-
-.detail-value{
-
-    color:#26332f;
-
-    font-weight:750;
-
-    text-align:right;
-
-    word-break:break-word;
-
-}
-
-
-/* ============================================================
-   FOOTER
-============================================================ */
-
-.checkout-footer{
-
-    padding:
-        18px
-        20px;
-
-    text-align:center;
-
-    border-top:
-        1px solid
-        #e7efed;
-
-    background:#fbfdfc;
-
-    color:#9aa7a3;
-
-    font-size:9px;
-
-}
-
-
-.footer-secure{
-
-    display:flex;
-
-    justify-content:center;
-
-    align-items:center;
-
-    gap:6px;
-
-    margin-bottom:6px;
-
-    color:#687874;
-
-    font-weight:650;
-
-}
-
-
-.footer-check{
-
-    width:16px;
-    height:16px;
-
-    border-radius:50%;
-
-    display:flex;
-
-    align-items:center;
-    justify-content:center;
-
-    background:#e7f7f3;
-
-    color:#0f766e;
-
-    border:
-        1px solid
-        #c7e9e1;
-
-    font-size:8px;
-
-    font-weight:900;
-
-}
-
-
-/* ============================================================
-   COPY TOAST
-============================================================ */
-
-.copy-toast{
-
-    position:fixed;
-
-    left:50%;
-    bottom:25px;
-
-    z-index:5000;
-
-    padding:
-        11px
-        17px;
-
-    border-radius:10px;
-
-    background:#17201e;
-
-    color:#ffffff;
-
-    font-size:10px;
-
-    font-weight:750;
-
-    box-shadow:
-        0 10px 28px
-        rgba(0,0,0,.16);
-
-    opacity:0;
-
-    pointer-events:none;
-
-    transform:
-        translate(-50%,15px);
-
-    transition:
-
-        opacity .25s ease,
-
-        transform .25s ease;
-
-}
-
-
-.copy-toast.show{
-
-    opacity:1;
-
-    transform:
-        translate(-50%,0);
-
-}
-
-
-/* ============================================================
-   FULL SCREEN LOADING
-============================================================ */
-
-.loading-overlay{
-
-    position:fixed;
-
-    inset:0;
-
-    z-index:9999;
-
-    background:
-        rgba(255,255,255,.97);
-
-    backdrop-filter:
-        blur(6px);
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:center;
-
-    flex-direction:column;
-
-    opacity:0;
-
-    visibility:hidden;
-
-    transition:.2s ease;
-
-}
-
-
-.loading-overlay.active{
-
-    opacity:1;
-
-    visibility:visible;
-
-}
-
-
-.loading-spinner{
-
-    width:53px;
-
-    height:53px;
-
-    border:
-        4px solid
-        #dce9e6;
-
-    border-top-color:#0f766e;
-
-    border-radius:50%;
-
-    animation:
-        spin
-        .7s
-        linear
-        infinite;
-
-}
-
-
-.loading-title{
-
-    margin-top:18px;
-
-    color:#17201e;
-
-    font-size:14px;
-
-    font-weight:850;
-
-}
-
-
-.loading-subtitle{
-
-    margin-top:6px;
-
-    color:#7b8a86;
-
-    font-size:10px;
-
-}
-
-
-/* ============================================================
-   EXPIRED
-============================================================ */
-
-.expired-screen{
-
-    text-align:center;
-
-    padding:
-        62px
-        25px;
-
-    animation:
-        fadeIn
-        .4s
-        ease
-        both;
-
-}
-
 
 .expired-icon{
-
-    width:74px;
-
-    height:74px;
-
-    margin:
-        0
-        auto
-        19px;
-
-    border-radius:50%;
-
-    background:#fff1f2;
-
-    color:#dc2626;
-
-    border:
-        1px solid
-        #fecdd3;
-
-    display:flex;
-
-    align-items:center;
-
-    justify-content:center;
-
-    font-size:29px;
-
-    font-weight:900;
-
-    box-shadow:
-        0 8px 24px
-        rgba(220,38,38,.07);
-
+    width: 60px;
+    height: 60px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239,68,68,0.3);
+    color: #ef4444;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    margin: 0 auto 16px;
 }
-
-
-.expired-title{
-
-    color:#17201e;
-
-    font-size:22px;
-
-    font-weight:850;
-
-}
-
-
-.expired-text{
-
-    margin-top:9px;
-
-    color:#778581;
-
-    font-size:12px;
-
-    line-height:1.65;
-
-}
-
-
-.expired-company{
-
-    margin-top:18px;
-
-    color:#0f766e;
-
-    font-size:13px;
-
-    font-weight:850;
-
-}
-
-
-/* ============================================================
-   ANIMATIONS
-============================================================ */
-
-@keyframes spin{
-
-    from{
-        transform:rotate(0deg);
-    }
-
-    to{
-        transform:rotate(360deg);
-    }
-
-}
-
-
-@keyframes fadeIn{
-
-    from{
-        opacity:0;
-    }
-
-    to{
-        opacity:1;
-    }
-
-}
-
-
-/* ============================================================
-   MOBILE
-============================================================ */
-
-@media(max-width:600px){
-
-    body{
-
-        background:#ffffff;
-
-    }
-
-
-    .checkout-page{
-
-        padding:0;
-
-        min-height:100vh;
-
-        display:block;
-
-        background:#ffffff;
-
-    }
-
-
-    .checkout-wrapper{
-
-        min-height:100vh;
-
-        max-width:none;
-
-        border:0;
-
-        border-radius:0;
-
-        box-shadow:none;
-
-    }
-
-
-    .checkout-header{
-
-        height:57px;
-
-    }
-
-
-    .merchant{
-
-        padding-top:27px;
-
-    }
-
-
-    .merchant-logo{
-
-        width:69px;
-        height:69px;
-
-        border-radius:16px;
-
-    }
-
-
-    .merchant-name{
-
-        font-size:18px;
-
-    }
-
-
-    .amount{
-
-        font-size:33px;
-
-    }
-
-
-    .payment-content{
-
-        padding:
-            0
-            17px
-            28px;
-
-    }
-
-
-    .expiry{
-
-        margin-left:17px;
-
-        margin-right:17px;
-
-    }
-
-
-    .qr-section{
-
-        padding:
-            20px
-            13px
-            17px;
-
-    }
-
-
-    .qr-image,
-    .qr-loader{
-
-        width:200px;
-
-        height:200px;
-
-    }
-
-
-    .apps{
-
-        gap:7px;
-
-    }
-
-
-    .app-button{
-
-        height:62px;
-
-    }
-
-
-    .app-button img{
-
-        max-width:73px;
-
-        max-height:36px;
-
-    }
-
-
-    .pay-button{
-
-        height:55px;
-
-    }
-
-}
-
-
-/* ============================================================
-   SMALL MOBILE
-============================================================ */
-
-@media(max-width:350px){
-
-    .amount{
-
-        font-size:30px;
-
-    }
-
-
-    .app-button img{
-
-        max-width:63px;
-
-    }
-
-
-    .payment-content{
-
-        padding-left:13px;
-
-        padding-right:13px;
-
-    }
-
-
-    .expiry{
-
-        margin-left:13px;
-
-        margin-right:13px;
-
-    }
-
-
-    .qr-image,
-    .qr-loader{
-
-        width:190px;
-
-        height:190px;
-
-    }
-
-}
-
 </style>
-
 </head>
-
-
 <body>
 
-
-<!-- ============================================================
-     FULL SCREEN LOADING
-============================================================ -->
-
-<div
-    class="loading-overlay"
-    id="loadingOverlay"
->
-
-    <div class="loading-spinner"></div>
-
-    <div
-        class="loading-title"
-        id="loadingTitle"
-    >
-        Opening UPI App
-    </div>
-
-    <div class="loading-subtitle">
-        Please wait...
-    </div>
-
-</div>
-
-
-<!-- ============================================================
-     COPY TOAST
-============================================================ -->
-
-<div
-    class="copy-toast"
-    id="copyToast"
->
-
-    UPI ID copied successfully
-
-</div>
-
-
-<!-- ============================================================
-     CHECKOUT PAGE
-============================================================ -->
-
-<div class="checkout-page">
-
-
 <div class="checkout-wrapper">
-
-
-<!-- ============================================================
-     HEADER
-============================================================ -->
-
-<div class="checkout-header">
-
-    <div class="secure-label">
-
-        <span class="secure-check">
-            ✓
-        </span>
-
-        Secure UPI Payment
-
-    </div>
-
-</div>
-
-
-<!-- ============================================================
-     ACTIVE PAYMENT
-============================================================ -->
-
-<div
-    id="activePayment"
-    style="<?php echo $isExpired ? 'display:none;' : ''; ?>"
->
-
-
-<!-- ============================================================
-     MERCHANT
-============================================================ -->
-
-<div class="merchant">
-
-
-<?php if($logo): ?>
-
-<img
-    src="<?php echo $safeLogo; ?>"
-    class="merchant-logo"
-    alt="<?php echo $safeCompany; ?>"
-    onerror="this.style.display='none';"
->
-
-<?php endif; ?>
-
-
-<div class="merchant-name">
-
-    <?php echo $safeCompany; ?>
-
-</div>
-
-
-<div class="merchant-subtitle">
-
-    Payment Request
-
-</div>
-
-
-</div>
-
-
-<!-- ============================================================
-     AMOUNT
-============================================================ -->
-
-<div class="amount-area">
-
-    <div class="amount-label">
-
-        Amount to Pay
-
-    </div>
-
-
-    <div class="amount">
-
-        ₹<?php echo $displayAmount; ?>
-
-    </div>
-
-</div>
-
-
-<!-- ============================================================
-     EXPIRY
-============================================================ -->
-
-<div class="expiry">
-
-    <div class="expiry-label">
-
-        Payment link expires in
-
-    </div>
-
-
-    <div
-        class="countdown"
-        id="countdown"
-    >
-
-        Loading...
-
-    </div>
-
-
-    <div class="expiry-date">
-
-        Expires:
-        <?php
-
-        echo date(
-            'd M Y, h:i A',
-            $expires
-        );
-
-        ?>
-
-    </div>
-
-</div>
-
-
-<!-- ============================================================
-     CONTENT
-============================================================ -->
-
-<div class="payment-content">
-
-
-<!-- ============================================================
-     UPI ID
-============================================================ -->
-
-<div class="section">
-
-    <div class="section-title">
-
-        UPI ID
-
-    </div>
-
-
-    <div class="upi-box">
-
-        <div class="upi-value">
-
-            <?php echo $safeUPI; ?>
-
+    <div id="activeContent" style="<?php echo $isExpired ? 'display:none;' : 'block'; ?>">
+        
+        <!-- TOP BRAND & TIMER -->
+        <div class="top-bar">
+            <div class="brand-info">
+                <?php if($logo !== ''): ?>
+                    <img src="<?php echo $safeLogo; ?>" alt="<?php echo $safeCompany; ?>" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';">
+                    <div class="brand-logo-fallback" style="display:none;"><?php echo strtoupper(substr($cleanCompany, 0, 1)); ?></div>
+                <?php else: ?>
+                    <div class="brand-logo-fallback"><?php echo strtoupper(substr($cleanCompany, 0, 1)); ?></div>
+                <?php endif; ?>
+                <div>
+                    <div class="brand-name"><?php echo $safeCompany; ?></div>
+                    <div class="brand-sub">Verified UPI Link</div>
+                </div>
+            </div>
+
+            <div class="timer-badge">
+                <span>⏱</span>
+                <span id="countdown">--:--</span>
+            </div>
         </div>
 
+        <!-- AMOUNT CARD -->
+        <div class="amount-card">
+            <div class="amount-label">Paying Amount</div>
+            <div class="amount-value">
+                <span class="amount-symbol">₹</span>
+                <span><?php echo $displayAmount; ?></span>
+            </div>
+        </div>
 
-        <button
-            type="button"
-            class="copy-button"
-            onclick="copyUPI()"
-        >
-
-            COPY
-
+        <!-- PRIMARY 1-TAP PAY BUTTON -->
+        <button type="button" class="pay-now-btn" onclick="triggerUPI('generic')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            Pay Now (Choose Any UPI App)
         </button>
 
-    </div>
-
-</div>
-
-
-<!-- ============================================================
-     QR
-============================================================ -->
-
-<div class="section">
-
-<div class="qr-section">
-
-    <div class="qr-title">
-
-        Scan & Pay
-
-    </div>
-
-
-    <div class="qr-subtitle">
-
-        Scan this QR code using any UPI app
-
-    </div>
-
-
-    <div
-        class="qr-loader"
-        id="qrLoader"
-    >
-
-        <div class="qr-spinner"></div>
-
-    </div>
-
-
-    <img
-        src="<?php echo htmlspecialchars(
-            $qrURL,
-            ENT_QUOTES,
-            'UTF-8'
-        ); ?>"
-        class="qr-image"
-        id="qrImage"
-        alt="UPI QR Code"
-        onload="qrLoaded()"
-        onerror="qrError()"
-    >
-
-
-    <button
-        type="button"
-        class="qr-download"
-        onclick="downloadQR()"
-    >
-
-        DOWNLOAD QR CODE
-
-    </button>
-
-</div>
-
-</div>
-
-
-<!-- ============================================================
-     MAIN PAYMENT BUTTON
-============================================================ -->
-
-<button
-    type="button"
-    class="pay-button"
-    id="payButton"
-    onclick="openUPI()"
->
-
-    <span class="pay-text">
-
-        PAY ₹<?php echo $displayAmount; ?>
-
-    </span>
-
-
-    <span class="pay-spinner"></span>
-
-</button>
-
-
-<!-- ============================================================
-     UPI APPS
-============================================================ -->
-
-<div class="apps-heading">
-
-    OR PAY USING UPI APP
-
-</div>
-
-
-<div class="apps">
-
-
-<!-- PHONEPE -->
-
-<button
-    type="button"
-    class="app-button"
-    onclick="openUPI('PhonePe')"
->
-
-<?php if($phonePeExists): ?>
-
-    <img
-        src="<?php echo $phonePeImage; ?>"
-        alt="PhonePe"
-    >
-
-<?php else: ?>
-
-    <span class="app-text">
-        PHONEPE
-    </span>
-
-<?php endif; ?>
-
-</button>
-
-
-<!-- GOOGLE PAY -->
-
-<button
-    type="button"
-    class="app-button"
-    onclick="openUPI('Google Pay')"
->
-
-<?php if($googlePayExists): ?>
-
-    <img
-        src="<?php echo $googlePayImage; ?>"
-        alt="Google Pay"
-    >
-
-<?php else: ?>
-
-    <span class="app-text">
-        GOOGLE PAY
-    </span>
-
-<?php endif; ?>
-
-</button>
-
-
-<!-- PAYTM -->
-
-<button
-    type="button"
-    class="app-button"
-    onclick="openUPI('Paytm')"
->
-
-<?php if($paytmExists): ?>
-
-    <img
-        src="<?php echo $paytmImage; ?>"
-        alt="Paytm"
-    >
-
-<?php else: ?>
-
-    <span class="app-text">
-        PAYTM
-    </span>
-
-<?php endif; ?>
-
-</button>
-
-
-</div>
-
-
-<!-- ============================================================
-     PAYMENT DETAILS
-============================================================ -->
-
-<div class="details">
-
-
-<div class="detail-row">
-
-    <span class="detail-label">
-        Merchant
-    </span>
-
-    <span class="detail-value">
-        <?php echo $safeCompany; ?>
-    </span>
-
-</div>
-
-
-<div class="detail-row">
-
-    <span class="detail-label">
-        UPI ID
-    </span>
-
-    <span class="detail-value">
-        <?php echo $safeUPI; ?>
-    </span>
-
-</div>
-
-
-<div class="detail-row">
-
-    <span class="detail-label">
-        Amount
-    </span>
-
-    <span class="detail-value">
-        ₹<?php echo $displayAmount; ?>
-    </span>
-
-</div>
-
-
-<div class="detail-row">
-
-    <span class="detail-label">
-        Currency
-    </span>
-
-    <span class="detail-value">
-        INR
-    </span>
-
-</div>
-
-
-</div>
-
-
-</div>
-
-
-<!-- ============================================================
-     FOOTER
-============================================================ -->
-
-<div class="checkout-footer">
-
-    <div class="footer-secure">
-
-        <span class="footer-check">
-            ✓
-        </span>
-
-        Secure payment through UPI
+        <div class="section-label">Or Select Your UPI App Directly</div>
+
+        <!-- APP SELECT GRID -->
+        <div class="app-grid">
+            <!-- Google Pay -->
+            <button type="button" class="app-btn" onclick="triggerUPI('gpay')">
+                <div class="app-icon" style="background:#fff;">
+                    <svg width="24" height="24" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+                    </svg>
+                </div>
+                <span class="app-title">GPay</span>
+            </button>
+
+            <!-- PhonePe -->
+            <button type="button" class="app-btn" onclick="triggerUPI('phonepe')">
+                <div class="app-icon" style="background:#5f259f;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M19.5 3h-15C3.1 3 2 4.1 2 5.5v13C2 19.9 3.1 21 4.5 21h15c1.4 0 2.5-1.1 2.5-2.5v-13C22 4.1 20.9 3 19.5 3zm-6.1 14.5l-3.2-4.6v4.6H8.4V6.5h3.6c2.4 0 4 1.5 4 3.7 0 1.6-.9 2.9-2.2 3.4l3.5 4.9h-2.1zM12 12c1.2 0 2-.8 2-1.8s-.8-1.8-2-1.8h-1.8V12H12z"/></svg>
+                </div>
+                <span class="app-title">PhonePe</span>
+            </button>
+
+            <!-- Paytm -->
+            <button type="button" class="app-btn" onclick="triggerUPI('paytm')">
+                <div class="app-icon" style="background:#00b9f5;">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M21 4H3c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-9 11.5c-2.5 0-4.5-2-4.5-4.5s2-4.5 4.5-4.5 4.5 2 4.5 4.5-2 4.5-4.5 4.5z"/></svg>
+                </div>
+                <span class="app-title">Paytm</span>
+            </button>
+
+            <!-- BHIM -->
+            <button type="button" class="app-btn" onclick="triggerUPI('bhim')">
+                <div class="app-icon" style="background:#00796b;">
+                    <span style="font-size:12px;font-weight:900;color:#fff;">BHIM</span>
+                </div>
+                <span class="app-title">BHIM</span>
+            </button>
+
+            <!-- CRED -->
+            <button type="button" class="app-btn" onclick="triggerUPI('cred')">
+                <div class="app-icon" style="background:#111;border:1px solid #333;">
+                    <span style="font-size:11px;font-weight:900;color:#fff;">CRED</span>
+                </div>
+                <span class="app-title">CRED</span>
+            </button>
+
+            <!-- Amazon Pay -->
+            <button type="button" class="app-btn" onclick="triggerUPI('generic')">
+                <div class="app-icon" style="background:#ff9900;">
+                    <span style="font-size:11px;font-weight:900;color:#111;">UPI</span>
+                </div>
+                <span class="app-title">Other UPI</span>
+            </button>
+        </div>
+
+        <!-- QR CODE SECTION (100% RELIABLE SCANNER) -->
+        <div class="qr-section">
+            <div class="qr-box">
+                <img src="<?php echo $qrURL; ?>" alt="Scan to Pay" class="qr-image" id="qrImg">
+            </div>
+            <div class="qr-hint">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Scan or Screenshot with Any UPI App
+            </div>
+        </div>
+
+        <!-- 1-TAP UPI ID COPY BAR -->
+        <div class="copy-bar">
+            <div class="copy-info">
+                <div class="copy-label">Receiver UPI ID</div>
+                <div class="copy-upi"><?php echo $safeUPI; ?></div>
+            </div>
+            <button type="button" class="copy-action-btn" onclick="copyUPI()">Copy ID</button>
+        </div>
+
+        <!-- FOOTER INFO -->
+        <div class="security-note">
+            <span class="security-badge">🔒</span>
+            End-to-End Encrypted UPI Payment
+        </div>
 
     </div>
 
-
-    Powered by
-    <?php echo $safeCompany; ?>
-
-</div>
-
-
-</div>
-
-
-<!-- ============================================================
-     EXPIRED PAYMENT
-============================================================ -->
-
-<div
-    class="expired-screen"
-    id="expiredScreen"
-    style="<?php echo $isExpired ? 'display:block;' : 'display:none;'; ?>"
->
-
-    <div class="expired-icon">
-        !
+    <!-- EXPIRED STATE -->
+    <div id="expiredContent" class="expired-card" style="<?php echo $isExpired ? 'display:block;' : 'display:none;'; ?>">
+        <div class="expired-icon">!</div>
+        <h2 style="color:#f8fafc;font-size:20px;margin-bottom:8px;">Payment Link Expired</h2>
+        <p style="color:var(--text-muted);font-size:13px;line-height:1.5;">This payment link has reached its validity time limit. Please request a new payment link from <?php echo $safeCompany; ?>.</p>
     </div>
-
-
-    <div class="expired-title">
-
-        Payment Link Expired
-
-    </div>
-
-
-    <div class="expired-text">
-
-        This payment link is no longer active.
-
-        Please request a new payment link
-        from the merchant.
-
-    </div>
-
-
-    <div class="expired-company">
-
-        <?php echo $safeCompany; ?>
-
-    </div>
-
 </div>
 
-
+<div id="copyToast" class="toast">
+    <span>✓</span>
+    <span id="toastMessage">UPI ID Copied!</span>
 </div>
-
-
-</div>
-
 
 <script>
+const upiID          = "<?php echo addslashes($upi); ?>";
+const company        = "<?php echo addslashes($cleanCompany); ?>";
+const amount         = "<?php echo addslashes($displayAmount); ?>";
+const expiryTimestamp = <?php echo $expires; ?>;
 
-/* ============================================================
-   PAYMENT DATA
-============================================================ */
+// Standard URI Query
+const upiQuery = "pa=" + encodeURIComponent(upiID) +
+                 "&pn=" + encodeURIComponent(company) +
+                 "&am=" + encodeURIComponent(amount) +
+                 "&cu=INR" +
+                 "&tn=" + encodeURIComponent("Payment to " + company);
 
-const upiID =
-<?php
+// Schemes
+const schemes = {
+    generic: "upi://pay?" + upiQuery,
+    gpay: {
+        android: "intent://pay?" + upiQuery + "#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end",
+        ios: "tez://upi/pay?" + upiQuery,
+        fallback: "upi://pay?" + upiQuery
+    },
+    phonepe: {
+        android: "intent://pay?" + upiQuery + "#Intent;scheme=upi;package=com.phonepe.app;end",
+        ios: "phonepe://pay?" + upiQuery,
+        fallback: "phonepe://pay?" + upiQuery
+    },
+    paytm: {
+        android: "intent://pay?" + upiQuery + "#Intent;scheme=upi;package=net.one97.paytm;end",
+        ios: "paytmmp://pay?" + upiQuery,
+        fallback: "paytmmp://pay?" + upiQuery
+    },
+    bhim: {
+        android: "intent://pay?" + upiQuery + "#Intent;scheme=upi;package=in.org.npci.upiapp;end",
+        ios: "bhim://pay?" + upiQuery,
+        fallback: "upi://pay?" + upiQuery
+    },
+    cred: {
+        android: "intent://pay?" + upiQuery + "#Intent;scheme=upi;package=com.dreamplug.androidapp;end",
+        ios: "cred://pay?" + upiQuery,
+        fallback: "cred://pay?" + upiQuery
+    }
+};
 
-echo json_encode(
-    $upi,
-    JSON_UNESCAPED_UNICODE |
-    JSON_UNESCAPED_SLASHES
-);
+const isAndroid = /android/i.test(navigator.userAgent);
+const isIOS     = /iphone|ipad|ipod/i.test(navigator.userAgent);
 
-?>;
-
-
-const companyName =
-<?php
-
-echo json_encode(
-    $company,
-    JSON_UNESCAPED_UNICODE |
-    JSON_UNESCAPED_SLASHES
-);
-
-?>;
-
-
-const paymentAmount =
-<?php
-
-echo json_encode(
-    $displayAmount
-);
-
-?>;
-
-
-const expiryTimestamp =
-<?php
-
-echo $expires;
-
-?>;
-
-
-/* ============================================================
-   UPI PAYMENT URL
-============================================================ */
-
-const upiPaymentURL =
-    "upi://pay" +
-    "?pa=" +
-    encodeURIComponent(upiID) +
-    "&pn=" +
-    encodeURIComponent(companyName) +
-    "&am=" +
-    encodeURIComponent(paymentAmount) +
-    "&cu=INR";
-
-
-/* ============================================================
-   OPEN UPI
-============================================================ */
-
-function openUPI(appName){
-
-    if(
-        Math.floor(
-            Date.now() / 1000
-        ) >= expiryTimestamp
-    ){
-
-        expirePayment();
-
+function triggerUPI(appKey) {
+    if (Math.floor(Date.now() / 1000) >= expiryTimestamp) {
+        showExpired();
         return;
-
     }
 
+    // Always copy UPI ID to clipboard seamlessly as a backup
+    copyToClipboardSilent(upiID);
 
-    const button =
-        document.getElementById(
-            "payButton"
-        );
+    let targetURL = schemes.generic;
 
-
-    const overlay =
-        document.getElementById(
-            "loadingOverlay"
-        );
-
-
-    const title =
-        document.getElementById(
-            "loadingTitle"
-        );
-
-
-    if(appName){
-
-        title.textContent =
-            "Opening " +
-            appName;
-
-    }else{
-
-        title.textContent =
-            "Opening UPI App";
-
-    }
-
-
-    overlay.classList.add(
-        "active"
-    );
-
-
-    if(button){
-
-        button.classList.add(
-            "loading"
-        );
-
-    }
-
-
-    /*
-     * Small delay for loading animation.
-     */
-
-    setTimeout(
-        function(){
-
-            window.location.href =
-                upiPaymentURL;
-
-        },
-        450
-    );
-
-}
-
-
-/* ============================================================
-   COPY UPI
-============================================================ */
-
-async function copyUPI(){
-
-    try{
-
-        if(
-            navigator.clipboard &&
-            window.isSecureContext
-        ){
-
-            await navigator.clipboard.writeText(
-                upiID
-            );
-
-        }else{
-
-            const temp =
-                document.createElement(
-                    "input"
-                );
-
-
-            temp.value =
-                upiID;
-
-
-            temp.style.position =
-                "fixed";
-
-
-            temp.style.left =
-                "-9999px";
-
-
-            document.body.appendChild(
-                temp
-            );
-
-
-            temp.select();
-
-
-            document.execCommand(
-                "copy"
-            );
-
-
-            temp.remove();
-
+    if (schemes[appKey]) {
+        if (typeof schemes[appKey] === "string") {
+            targetURL = schemes[appKey];
+        } else if (isAndroid && schemes[appKey].android) {
+            targetURL = schemes[appKey].android;
+        } else if (isIOS && schemes[appKey].ios) {
+            targetURL = schemes[appKey].ios;
+        } else {
+            targetURL = schemes[appKey].fallback || schemes.generic;
         }
-
-
-        showCopyToast();
-
-    }catch(error){
-
-        alert(
-            "UPI ID: " +
-            upiID
-        );
-
     }
 
+    showToast("Opening payment app...");
+
+    setTimeout(() => {
+        window.location.href = targetURL;
+    }, 250);
 }
 
-
-/* ============================================================
-   COPY TOAST
-============================================================ */
-
-function showCopyToast(){
-
-    const toast =
-        document.getElementById(
-            "copyToast"
-        );
-
-
-    toast.classList.add(
-        "show"
-    );
-
-
-    setTimeout(
-        function(){
-
-            toast.classList.remove(
-                "show"
-            );
-
-        },
-        2000
-    );
-
+function copyUPI() {
+    copyToClipboardSilent(upiID);
+    showToast("UPI ID Copied to Clipboard!");
 }
 
-
-/* ============================================================
-   QR LOADED
-============================================================ */
-
-function qrLoaded(){
-
-    const loader =
-        document.getElementById(
-            "qrLoader"
-        );
-
-
-    const image =
-        document.getElementById(
-            "qrImage"
-        );
-
-
-    if(loader){
-
-        loader.style.display =
-            "none";
-
+function copyToClipboardSilent(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).catch(() => {});
+    } else {
+        const el = document.createElement("input");
+        el.value = text;
+        el.style.position = "fixed";
+        el.style.left = "-9999px";
+        document.body.appendChild(el);
+        el.select();
+        try { document.execCommand("copy"); } catch(e) {}
+        document.body.removeChild(el);
     }
-
-
-    if(image){
-
-        image.style.display =
-            "block";
-
-    }
-
 }
 
-
-/* ============================================================
-   QR ERROR
-============================================================ */
-
-function qrError(){
-
-    const loader =
-        document.getElementById(
-            "qrLoader"
-        );
-
-
-    if(loader){
-
-        loader.innerHTML =
-            '<div style="' +
-            'font-size:10px;' +
-            'color:#6b7a76;' +
-            'padding:20px;' +
-            'line-height:1.5;' +
-            '">' +
-            'QR code could not be loaded.' +
-            '</div>';
-
-    }
-
+function showToast(msg) {
+    const toast = document.getElementById("copyToast");
+    const label = document.getElementById("toastMessage");
+    label.textContent = msg;
+    toast.classList.add("show");
+    setTimeout(() => { toast.classList.remove("show"); }, 2500);
 }
 
+function updateCountdown() {
+    const now = Math.floor(Date.now() / 1000);
+    const diff = expiryTimestamp - now;
 
-/* ============================================================
-   COUNTDOWN
-============================================================ */
-
-function updateCountdown(){
-
-    const now =
-        Math.floor(
-            Date.now() / 1000
-        );
-
-
-    let remaining =
-        expiryTimestamp -
-        now;
-
-
-    if(
-        remaining <= 0
-    ){
-
-        expirePayment();
-
+    if (diff <= 0) {
+        showExpired();
         return;
-
     }
 
-
-    const days =
-        Math.floor(
-            remaining / 86400
-        );
-
-
-    remaining %=
-        86400;
-
-
-    const hours =
-        Math.floor(
-            remaining / 3600
-        );
-
-
-    remaining %=
-        3600;
-
-
-    const minutes =
-        Math.floor(
-            remaining / 60
-        );
-
-
-    const seconds =
-        remaining %
-        60;
-
-
-    let text = "";
-
-
-    if(days > 0){
-
-        text +=
-            days +
-            "d ";
-
+    const m = Math.floor(diff / 60);
+    const s = diff % 60;
+    const badge = document.getElementById("countdown");
+    if (badge) {
+        badge.textContent = (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
     }
-
-
-    text +=
-        String(hours)
-            .padStart(2,"0") +
-        ":";
-
-
-    text +=
-        String(minutes)
-            .padStart(2,"0") +
-        ":";
-
-
-    text +=
-        String(seconds)
-            .padStart(2,"0");
-
-
-    const countdown =
-        document.getElementById(
-            "countdown"
-        );
-
-
-    if(countdown){
-
-        countdown.textContent =
-            text;
-
-    }
-
 }
 
-
-/* ============================================================
-   EXPIRE PAYMENT
-============================================================ */
-
-function expirePayment(){
-
-    const active =
-        document.getElementById(
-            "activePayment"
-        );
-
-
-    const expired =
-        document.getElementById(
-            "expiredScreen"
-        );
-
-
-    const overlay =
-        document.getElementById(
-            "loadingOverlay"
-        );
-
-
-    if(active){
-
-        active.style.display =
-            "none";
-
-    }
-
-
-    if(expired){
-
-        expired.style.display =
-            "block";
-
-    }
-
-
-    if(overlay){
-
-        overlay.classList.remove(
-            "active"
-        );
-
-    }
-
+function showExpired() {
+    const active = document.getElementById("activeContent");
+    const expired = document.getElementById("expiredContent");
+    if (active) active.style.display = "none";
+    if (expired) expired.style.display = "block";
 }
-
-
-/* ============================================================
-   DOWNLOAD QR
-============================================================ */
-
-async function downloadQR(){
-
-    const qr =
-        document.getElementById(
-            "qrImage"
-        );
-
-
-    if(
-        !qr ||
-        qr.style.display === "none"
-    ){
-
-        return;
-
-    }
-
-
-    try{
-
-        const response =
-            await fetch(
-                qr.src
-            );
-
-
-        const blob =
-            await response.blob();
-
-
-        const blobURL =
-            URL.createObjectURL(
-                blob
-            );
-
-
-        const link =
-            document.createElement(
-                "a"
-            );
-
-
-        link.href =
-            blobURL;
-
-
-        link.download =
-            "upi-payment-qr.png";
-
-
-        document.body.appendChild(
-            link
-        );
-
-
-        link.click();
-
-
-        link.remove();
-
-
-        URL.revokeObjectURL(
-            blobURL
-        );
-
-    }catch(error){
-
-        window.open(
-            qr.src,
-            "_blank"
-        );
-
-    }
-
-}
-
-
-/* ============================================================
-   START COUNTDOWN
-============================================================ */
 
 <?php if(!$isExpired): ?>
-
 updateCountdown();
-
-setInterval(
-    updateCountdown,
-    1000
-);
-
+setInterval(updateCountdown, 1000);
 <?php endif; ?>
-
 </script>
 
-
 </body>
-
 </html>
